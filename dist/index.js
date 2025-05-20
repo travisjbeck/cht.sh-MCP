@@ -85,7 +85,7 @@ async function handleRequest(request) {
         };
     }
     // Handle tool listing request
-    if (request.method === "listTools") {
+    if (request.method === "tools/list") {
         return {
             jsonrpc: "2.0",
             id: request.id,
