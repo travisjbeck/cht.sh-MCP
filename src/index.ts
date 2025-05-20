@@ -20,14 +20,14 @@ const rl = createInterface({
 
 // MCP protocol types
 interface MCPRequest {
-  id?: string;
+  id?: string | number;
   method: string;
   params?: Record<string, any>;
   jsonrpc: "2.0";
 }
 
 interface MCPResponse {
-  id: string | null;
+  id: string | number;
   result?: unknown;
   error?: {
     code: number;
@@ -100,18 +100,21 @@ const chtShTool = {
 async function handleRequest(request: MCPRequest): Promise<MCPResponse | null> {
   console.error(`Processing request method: ${request.method}`);
   
+  // Make sure we have a valid ID (using "0" as default if id is missing or null)
+  const responseId = request.id || "0";
+  
   // Handle initialization request
   if (request.method === "initialize") {
     console.error("Received initialize request");
     return {
       jsonrpc: "2.0",
-      id: request.id || null,
+      id: responseId,
       result: {
         protocolVersion: "2024-03-26",
         capabilities: {}, // Simplified empty capabilities object
         serverInfo: {
           name: "CheatSheet", // Simple name without hyphens
-          version: "1.0.0"    // Simple version string
+          version
         }
       }
     };
@@ -128,7 +131,7 @@ async function handleRequest(request: MCPRequest): Promise<MCPResponse | null> {
     console.error("Received tools/list request");
     return {
       jsonrpc: "2.0",
-      id: request.id || null,
+      id: responseId,
       result: {
         tools: [chtShTool]
       }
@@ -140,7 +143,7 @@ async function handleRequest(request: MCPRequest): Promise<MCPResponse | null> {
     console.error("Received ping request");
     return {
       jsonrpc: "2.0",
-      id: request.id || null,
+      id: responseId,
       result: {
         status: "ok",
         timestamp: Date.now()
@@ -170,7 +173,7 @@ async function handleRequest(request: MCPRequest): Promise<MCPResponse | null> {
       if (params.name !== "cht_sh") {
         return {
           jsonrpc: "2.0",
-          id: request.id || null,
+          id: responseId,
           error: {
             code: -32601,
             message: `Tool not found: ${params.name}`
@@ -183,7 +186,7 @@ async function handleRequest(request: MCPRequest): Promise<MCPResponse | null> {
       if (!query) {
         return {
           jsonrpc: "2.0",
-          id: request.id || null,
+          id: responseId,
           error: {
             code: -32602,
             message: "Invalid params: query is required"
@@ -199,7 +202,7 @@ async function handleRequest(request: MCPRequest): Promise<MCPResponse | null> {
         
       return {
         jsonrpc: "2.0",
-        id: request.id || null,
+        id: responseId,
         result: {
           content: [
             {
@@ -213,7 +216,7 @@ async function handleRequest(request: MCPRequest): Promise<MCPResponse | null> {
       console.error("Error handling callTool:", error);
       return {
         jsonrpc: "2.0",
-        id: request.id || null,
+        id: responseId,
         error: {
           code: -32000,
           message: error instanceof Error ? error.message : "Unknown error"
@@ -226,7 +229,7 @@ async function handleRequest(request: MCPRequest): Promise<MCPResponse | null> {
   console.error(`Unknown method: ${request.method}`);
   return {
     jsonrpc: "2.0",
-    id: request.id || null,
+    id: responseId,
     error: {
       code: -32601,
       message: `Method not found: ${request.method}`
@@ -249,7 +252,7 @@ rl.on('line', async (line) => {
     } catch (e) {
       console.error("Failed to parse JSON:", e);
       const errorResponse: MCPResponse = {
-        id: null,
+        id: "0",
         jsonrpc: "2.0",
         error: {
           code: -32700,
@@ -264,7 +267,7 @@ rl.on('line', async (line) => {
     if (request.jsonrpc !== "2.0" || !request.method) {
       console.error("Invalid JSON-RPC 2.0 request");
       const errorResponse: MCPResponse = {
-        id: request.id || null,
+        id: request.id || "0",
         jsonrpc: "2.0",
         error: {
           code: -32600,
@@ -287,7 +290,7 @@ rl.on('line', async (line) => {
   } catch (error: any) {
     console.error("Error processing request:", error);
     const errorResponse: MCPResponse = {
-      id: null,
+      id: "0",
       jsonrpc: "2.0",
       error: {
         code: -32603,

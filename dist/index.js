@@ -8,6 +8,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const axios_1 = __importDefault(require("axios"));
 const readline_1 = require("readline");
+const package_json_1 = require("../package.json");
 // cht.sh base URL
 const CHT_SH_BASE_URL = 'https://cht.sh/';
 // Set up readline interface for STDIO
@@ -73,18 +74,21 @@ const chtShTool = {
 // Handle MCP requests
 async function handleRequest(request) {
     console.error(`Processing request method: ${request.method}`);
+    // Make sure we have a valid ID (using "0" as default if id is missing or null)
+    const responseId = request.id || "0";
     // Handle initialization request
     if (request.method === "initialize") {
         console.error("Received initialize request");
         return {
             jsonrpc: "2.0",
-            id: request.id || null,
+            id: responseId,
             result: {
                 protocolVersion: "2024-03-26",
                 capabilities: {}, // Simplified empty capabilities object
                 serverInfo: {
                     name: "CheatSheet", // Simple name without hyphens
-                    version: "1.0.0" // Simple version string
+                    version: // Simple name without hyphens
+                    package_json_1.version
                 }
             }
         };
@@ -99,7 +103,7 @@ async function handleRequest(request) {
         console.error("Received tools/list request");
         return {
             jsonrpc: "2.0",
-            id: request.id || null,
+            id: responseId,
             result: {
                 tools: [chtShTool]
             }
@@ -110,7 +114,7 @@ async function handleRequest(request) {
         console.error("Received ping request");
         return {
             jsonrpc: "2.0",
-            id: request.id || null,
+            id: responseId,
             result: {
                 status: "ok",
                 timestamp: Date.now()
@@ -129,7 +133,7 @@ async function handleRequest(request) {
             if (params.name !== "cht_sh") {
                 return {
                     jsonrpc: "2.0",
-                    id: request.id || null,
+                    id: responseId,
                     error: {
                         code: -32601,
                         message: `Tool not found: ${params.name}`
@@ -140,7 +144,7 @@ async function handleRequest(request) {
             if (!query) {
                 return {
                     jsonrpc: "2.0",
-                    id: request.id || null,
+                    id: responseId,
                     error: {
                         code: -32602,
                         message: "Invalid params: query is required"
@@ -150,7 +154,7 @@ async function handleRequest(request) {
             const result = await fetchFromChtSh(query, language, options || []);
             return {
                 jsonrpc: "2.0",
-                id: request.id || null,
+                id: responseId,
                 result: {
                     content: [
                         {
@@ -165,7 +169,7 @@ async function handleRequest(request) {
             console.error("Error handling callTool:", error);
             return {
                 jsonrpc: "2.0",
-                id: request.id || null,
+                id: responseId,
                 error: {
                     code: -32000,
                     message: error instanceof Error ? error.message : "Unknown error"
@@ -177,7 +181,7 @@ async function handleRequest(request) {
     console.error(`Unknown method: ${request.method}`);
     return {
         jsonrpc: "2.0",
-        id: request.id || null,
+        id: responseId,
         error: {
             code: -32601,
             message: `Method not found: ${request.method}`
@@ -198,7 +202,7 @@ rl.on('line', async (line) => {
         catch (e) {
             console.error("Failed to parse JSON:", e);
             const errorResponse = {
-                id: null,
+                id: "0",
                 jsonrpc: "2.0",
                 error: {
                     code: -32700,
@@ -212,7 +216,7 @@ rl.on('line', async (line) => {
         if (request.jsonrpc !== "2.0" || !request.method) {
             console.error("Invalid JSON-RPC 2.0 request");
             const errorResponse = {
-                id: request.id || null,
+                id: request.id || "0",
                 jsonrpc: "2.0",
                 error: {
                     code: -32600,
@@ -235,7 +239,7 @@ rl.on('line', async (line) => {
     catch (error) {
         console.error("Error processing request:", error);
         const errorResponse = {
-            id: null,
+            id: "0",
             jsonrpc: "2.0",
             error: {
                 code: -32603,
