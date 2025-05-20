@@ -5,6 +5,7 @@
 
 import axios from 'axios';
 import readline from 'readline';
+import pkg from '../package.json'; // Import package.json
 
 // MCP protocol types
 interface MCPRequest {
@@ -110,7 +111,7 @@ async function handleRequest(request: MCPRequest): Promise<MCPResponse> {
         },
         serverInfo: {
           name: "chtsh-mcp-server",
-          version: "1.1.0"
+          version: pkg.version // Use dynamic version from package.json
         }
       }
     };

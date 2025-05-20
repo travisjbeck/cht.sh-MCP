@@ -8,6 +8,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const axios_1 = __importDefault(require("axios"));
 const readline_1 = __importDefault(require("readline"));
+const package_json_1 = __importDefault(require("../package.json")); // Import package.json
 // cht.sh base URL
 const CHT_SH_BASE_URL = 'https://cht.sh/';
 // Define the cht.sh tool
@@ -78,7 +79,7 @@ async function handleRequest(request) {
                 },
                 serverInfo: {
                     name: "chtsh-mcp-server",
-                    version: "1.1.0"
+                    version: package_json_1.default.version // Use dynamic version from package.json
                 }
             }
         };
