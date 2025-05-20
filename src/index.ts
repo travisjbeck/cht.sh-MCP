@@ -103,7 +103,7 @@ async function handleRequest(request: MCPRequest): Promise<MCPResponse> {
       jsonrpc: "2.0",
       id: request.id,
       result: {
-        protocolVersion: "2025-03-26",
+        protocolVersion: "2024-03-26",
         capabilities: {
           tools: {
             listChanged: true

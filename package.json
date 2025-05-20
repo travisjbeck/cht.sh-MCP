@@ -1,6 +1,6 @@
 {
   "name": "chtsh-mcp-server",
-  "version": "1.2.3",
+  "version": "1.2.4",
   "description": "Model Context Protocol server for cht.sh integration with Cursor",
   "main": "dist/index.js",
   "bin": {
