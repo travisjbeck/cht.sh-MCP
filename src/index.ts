@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 // cht.sh MCP Server for Cursor
 // Implements the Model Context Protocol for cht.sh integration
 
@@ -229,10 +231,34 @@ app.get('/health', (_req, res) => {
   res.json({ status: 'ok', service: 'cht.sh-mcp-server' });
 });
 
-// Start the server
-server.listen(PORT, () => {
-  console.log(`cht.sh MCP Server running on port ${PORT}`);
-});
+// Start the server on the first available port between 3000 and 3100
+function startServerOnAvailablePort(start: number, end: number) {
+  let currentPort = start;
+  function tryListen() {
+    server.listen(currentPort, () => {
+      console.log(`cht.sh MCP Server running on port ${currentPort}`);
+    });
+    server.on('error', (err: any) => {
+      if (err.code === 'EADDRINUSE') {
+        currentPort++;
+        if (currentPort > end) {
+          console.error(`No available ports between ${start} and ${end}`);
+          process.exit(1);
+        } else {
+          server.close();
+          server.removeAllListeners('error');
+          tryListen();
+        }
+      } else {
+        console.error('Server error:', err);
+        process.exit(1);
+      }
+    });
+  }
+  tryListen();
+}
+
+startServerOnAvailablePort(3000, 3100);
 
 // Handle process errors
 process.on('uncaughtException', (error) => {
