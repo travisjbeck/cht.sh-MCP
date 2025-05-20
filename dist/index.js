@@ -7,10 +7,43 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const axios_1 = __importDefault(require("axios"));
-const readline_1 = __importDefault(require("readline"));
-const package_json_1 = __importDefault(require("../package.json")); // Import package.json
+const readline_1 = require("readline");
 // cht.sh base URL
 const CHT_SH_BASE_URL = 'https://cht.sh/';
+// Set up readline interface for STDIO
+const rl = (0, readline_1.createInterface)({
+    input: process.stdin,
+    output: process.stdout,
+    terminal: false
+});
+// Fetch data from cht.sh
+async function fetchFromChtSh(query, language, options = []) {
+    let url = `${CHT_SH_BASE_URL}`;
+    if (language) {
+        url += `${language}/`;
+    }
+    url += query;
+    // Add options as query parameters
+    if (options.length > 0) {
+        url += `?${options.join('&')}`;
+    }
+    try {
+        console.error(`Fetching from URL: ${url}`);
+        const response = await axios_1.default.get(url, {
+            headers: {
+                'User-Agent': 'curl/7.68.0', // Mimic curl for consistent cht.sh behavior
+            },
+        });
+        return response.data;
+    }
+    catch (error) {
+        console.error(`Error fetching from cht.sh: ${error.message}`);
+        if (axios_1.default.isAxiosError(error)) {
+            throw new Error(`Failed to fetch from cht.sh: ${error.message}`);
+        }
+        throw error;
+    }
+}
 // Define the cht.sh tool
 const chtShTool = {
     name: "cht_sh",
@@ -37,58 +70,36 @@ const chtShTool = {
         required: ["query"]
     }
 };
-// Fetch data from cht.sh
-async function fetchFromChtSh(query, language, options = []) {
-    let url = `${CHT_SH_BASE_URL}`;
-    if (language) {
-        url += `${language}/`;
-    }
-    url += query;
-    // Add options as query parameters
-    if (options.length > 0) {
-        url += `?${options.join('&')}`;
-    }
-    try {
-        const response = await axios_1.default.get(url, {
-            headers: {
-                'User-Agent': 'curl/7.68.0', // Mimic curl for consistent cht.sh behavior
-            },
-        });
-        return response.data;
-    }
-    catch (error) {
-        if (axios_1.default.isAxiosError(error)) {
-            throw new Error(`Failed to fetch from cht.sh: ${error.message}`);
-        }
-        throw error;
-    }
-}
 // Handle MCP requests
 async function handleRequest(request) {
+    console.error(`Processing request method: ${request.method}`);
     // Handle initialization request
     if (request.method === "initialize") {
+        console.error("Received initialize request");
         return {
             jsonrpc: "2.0",
-            id: request.id,
+            id: request.id || null,
             result: {
                 protocolVersion: "2024-03-26",
-                capabilities: {
-                    tools: {
-                        listChanged: true
-                    }
-                },
+                capabilities: {}, // Simplified empty capabilities object
                 serverInfo: {
-                    name: "chtsh-mcp-server",
-                    version: package_json_1.default.version // Use dynamic version from package.json
+                    name: "CheatSheet", // Simple name without hyphens
+                    version: "1.0.0" // Simple version string
                 }
             }
         };
     }
+    // Handle 'initialized' notification from client (no response needed)
+    if (request.method === "initialized") {
+        console.error("Received 'initialized' notification from client. No response will be sent.");
+        return null; // No response for notifications
+    }
     // Handle tool listing request
     if (request.method === "tools/list") {
+        console.error("Received tools/list request");
         return {
             jsonrpc: "2.0",
-            id: request.id,
+            id: request.id || null,
             result: {
                 tools: [chtShTool]
             }
@@ -96,20 +107,29 @@ async function handleRequest(request) {
     }
     // Handle ping request
     if (request.method === "ping") {
+        console.error("Received ping request");
         return {
             jsonrpc: "2.0",
-            id: request.id,
-            result: { status: "ok", timestamp: Date.now() }
+            id: request.id || null,
+            result: {
+                status: "ok",
+                timestamp: Date.now()
+            }
         };
     }
     // Handle tool call
     if (request.method === "callTool") {
+        console.error("Received callTool request");
         try {
+            if (!request.params) {
+                throw new Error("Missing parameters");
+            }
             const params = request.params;
+            console.error(`Tool call: ${params.name}, args:`, JSON.stringify(params.arguments));
             if (params.name !== "cht_sh") {
                 return {
                     jsonrpc: "2.0",
-                    id: request.id,
+                    id: request.id || null,
                     error: {
                         code: -32601,
                         message: `Tool not found: ${params.name}`
@@ -120,7 +140,7 @@ async function handleRequest(request) {
             if (!query) {
                 return {
                     jsonrpc: "2.0",
-                    id: request.id,
+                    id: request.id || null,
                     error: {
                         code: -32602,
                         message: "Invalid params: query is required"
@@ -130,7 +150,7 @@ async function handleRequest(request) {
             const result = await fetchFromChtSh(query, language, options || []);
             return {
                 jsonrpc: "2.0",
-                id: request.id,
+                id: request.id || null,
                 result: {
                     content: [
                         {
@@ -142,9 +162,10 @@ async function handleRequest(request) {
             };
         }
         catch (error) {
+            console.error("Error handling callTool:", error);
             return {
                 jsonrpc: "2.0",
-                id: request.id,
+                id: request.id || null,
                 error: {
                     code: -32000,
                     message: error instanceof Error ? error.message : "Unknown error"
@@ -153,35 +174,62 @@ async function handleRequest(request) {
         }
     }
     // Default case for unknown methods
+    console.error(`Unknown method: ${request.method}`);
     return {
         jsonrpc: "2.0",
-        id: request.id,
+        id: request.id || null,
         error: {
             code: -32601,
             message: `Method not found: ${request.method}`
         }
     };
 }
-// Set up readline interface for STDIO
-const rl = readline_1.default.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-    terminal: false
-});
-// Log the start of the server (this goes to stderr which won't interfere with the protocol)
+// At startup
 console.error("cht.sh MCP Server starting...");
 // Handle incoming STDIO requests
 rl.on('line', async (line) => {
     try {
         console.error(`Received: ${line}`);
-        const request = JSON.parse(line);
+        // Validate input is proper JSON
+        let request;
+        try {
+            request = JSON.parse(line);
+        }
+        catch (e) {
+            console.error("Failed to parse JSON:", e);
+            const errorResponse = {
+                id: null,
+                jsonrpc: "2.0",
+                error: {
+                    code: -32700,
+                    message: "Parse error: Invalid JSON"
+                }
+            };
+            process.stdout.write(JSON.stringify(errorResponse) + '\n');
+            return;
+        }
+        // Validate required JSON-RPC 2.0 fields
+        if (request.jsonrpc !== "2.0" || !request.method) {
+            console.error("Invalid JSON-RPC 2.0 request");
+            const errorResponse = {
+                id: request.id || null,
+                jsonrpc: "2.0",
+                error: {
+                    code: -32600,
+                    message: "Invalid Request: Not a valid JSON-RPC 2.0 request"
+                }
+            };
+            process.stdout.write(JSON.stringify(errorResponse) + '\n');
+            return;
+        }
         const response = await handleRequest(request);
-        const responseJson = JSON.stringify(response);
-        console.error(`Sending: ${responseJson}`);
-        process.stdout.write(responseJson + '\n');
-        // If this was an initialize request, handle the initialized notification from client
-        if (request.method === "initialize") {
-            console.error("Waiting for initialized notification...");
+        if (response) { // Only send a response if one is actually returned
+            const responseJson = JSON.stringify(response);
+            console.error(`Sending: ${responseJson}`);
+            process.stdout.write(responseJson + '\n');
+        }
+        else {
+            console.error("No response to send (notification handled)");
         }
     }
     catch (error) {
@@ -190,18 +238,25 @@ rl.on('line', async (line) => {
             id: null,
             jsonrpc: "2.0",
             error: {
-                code: -32700,
-                message: "Parse error",
+                code: -32603,
+                message: "Internal error",
                 data: error instanceof Error ? error.message : "Unknown error"
             }
         };
         process.stdout.write(JSON.stringify(errorResponse) + '\n');
     }
 });
-// Error handling
+// Handle readline close
+rl.on('close', () => {
+    console.error("cht.sh MCP Server: Input stream closed. Shutting down.");
+    process.exit(0);
+});
+// Error handling for the process
 process.on('uncaughtException', (error) => {
     console.error('Uncaught Exception:', error);
 });
 process.on('unhandledRejection', (reason, promise) => {
     console.error('Unhandled Rejection at:', promise, 'reason:', reason);
 });
+// Keep the process alive
+process.stdin.resume();
