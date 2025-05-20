@@ -3,13 +3,10 @@
 // cht.sh MCP Server for Cursor
 // Implements the Model Context Protocol for cht.sh integration
 
-import express from 'express';
-import { createServer } from 'http';
-import WebSocket from 'ws';
 import axios from 'axios';
-import cors from 'cors';
+import readline from 'readline';
 
-// Define the MCP protocol types
+// MCP protocol types
 interface MCPRequest {
   id: string;
   method: string;
@@ -17,45 +14,34 @@ interface MCPRequest {
 }
 
 interface MCPResponse {
-  id: string;
+  id: string | null;
   result?: unknown;
   error?: {
     code: number;
     message: string;
     data?: unknown;
   };
+  jsonrpc: "2.0";
 }
 
 interface MCPToolDescription {
   name: string;
   description: string;
-  parameters: {
+  inputSchema: {
     type: string;
     properties: Record<string, unknown>;
     required?: string[];
   };
 }
 
-// Configure server
-const PORT = process.env.PORT || 3000;
+// cht.sh base URL
 const CHT_SH_BASE_URL = 'https://cht.sh/';
-
-// Create Express app
-const app = express();
-app.use(cors());
-app.use(express.json());
-
-// Create HTTP server
-const server = createServer(app);
-
-// Create WebSocket server
-const wss = new WebSocket.Server({ server });
 
 // Define the cht.sh tool
 const chtShTool: MCPToolDescription = {
-  name: "cht.sh",
+  name: "cht_sh",
   description: "Look up programming language cheat sheets, examples and documentation from cht.sh",
-  parameters: {
+  inputSchema: {
     type: "object",
     properties: {
       language: {
@@ -96,11 +82,11 @@ async function fetchFromChtSh(query: string, language?: string, options: string[
   try {
     const response = await axios.get(url, {
       headers: {
-        'User-Agent': 'curl/7.68.0',
+        'User-Agent': 'curl/7.68.0', // Mimic curl for consistent cht.sh behavior
       },
     });
     return response.data;
-  } catch (error) {
+  } catch (error: any) {
     if (axios.isAxiosError(error)) {
       throw new Error(`Failed to fetch from cht.sh: ${error.message}`);
     }
@@ -108,159 +94,165 @@ async function fetchFromChtSh(query: string, language?: string, options: string[
   }
 }
 
-// Handle WebSocket connections
-wss.on('connection', (ws) => {
-  console.log('Client connected');
-  
-  // Send tool registration on connection
-  const toolRegistration: MCPResponse = {
-    id: "registration",
-    result: {
-      schema: "https://modelcontextprotocol.io/schema.json",
-      tools: [chtShTool]
-    }
-  };
-  
-  ws.send(JSON.stringify(toolRegistration));
-  
-  // Handle incoming messages
-  ws.on('message', async (data) => {
-    let request: MCPRequest;
-    
-    try {
-      request = JSON.parse(data.toString());
-    } catch (error) {
-      const response: MCPResponse = {
-        id: "error",
-        error: {
-          code: -32700,
-          message: "Parse error"
-        }
-      };
-      ws.send(JSON.stringify(response));
-      return;
-    }
-    
-    // Process the request
-    handleRequest(request)
-      .then(response => {
-        ws.send(JSON.stringify(response));
-      })
-      .catch(error => {
-        const response: MCPResponse = {
-          id: request.id,
-          error: {
-            code: -32603,
-            message: error.message || "Internal error"
-          }
-        };
-        ws.send(JSON.stringify(response));
-      });
-  });
-  
-  ws.on('close', () => {
-    console.log('Client disconnected');
-  });
-});
-
 // Handle MCP requests
 async function handleRequest(request: MCPRequest): Promise<MCPResponse> {
-  // Handle different methods
-  switch (request.method) {
-    case "ping":
-      return {
-        id: request.id,
-        result: { status: "ok", timestamp: Date.now() }
-      };
+  // Handle initialization request
+  if (request.method === "initialize") {
+    return {
+      jsonrpc: "2.0",
+      id: request.id,
+      result: {
+        protocolVersion: "2025-03-26",
+        capabilities: {
+          tools: {
+            listChanged: true
+          }
+        },
+        serverInfo: {
+          name: "chtsh-mcp-server",
+          version: "1.1.0"
+        }
+      }
+    };
+  }
+
+  // Handle tool listing request
+  if (request.method === "listTools") {
+    return {
+      jsonrpc: "2.0",
+      id: request.id,
+      result: {
+        tools: [chtShTool]
+      }
+    };
+  }
+
+  // Handle ping request
+  if (request.method === "ping") {
+    return {
+      jsonrpc: "2.0",
+      id: request.id,
+      result: { status: "ok", timestamp: Date.now() }
+    };
+  }
       
-    case "cht.sh":
-      try {
-        const { language, query, options } = request.params as { 
+  // Handle tool call
+  if (request.method === "callTool") {
+    try {
+      const params = request.params as { 
+        name: string;
+        arguments: { 
           language?: string; 
           query: string; 
           options?: string[] 
-        };
-        
-        if (!query) {
-          return {
-            id: request.id,
-            error: {
-              code: -32602,
-              message: "Invalid params: query is required"
-            }
-          };
-        }
-        
-        const result = await fetchFromChtSh(
-          query,
-          language,
-          options || []
-        );
-        
+        } 
+      };
+      
+      if (params.name !== "cht_sh") {
         return {
-          id: request.id,
-          result: {
-            content: result,
-            mimeType: "text/plain"
-          }
-        };
-      } catch (error) {
-        console.error("Error fetching from cht.sh:", error);
-        return {
+          jsonrpc: "2.0",
           id: request.id,
           error: {
-            code: -32000,
-            message: error instanceof Error ? error.message : "Unknown error"
+            code: -32601,
+            message: `Tool not found: ${params.name}`
+          }
+        };
+      }
+
+      const { language, query, options } = params.arguments;
+      
+      if (!query) {
+        return {
+          jsonrpc: "2.0",
+          id: request.id,
+          error: {
+            code: -32602,
+            message: "Invalid params: query is required"
           }
         };
       }
       
-    default:
+      const result = await fetchFromChtSh(
+        query,
+        language,
+        options || []
+      );
+      
       return {
+        jsonrpc: "2.0",
         id: request.id,
-        error: {
-          code: -32601,
-          message: `Method not found: ${request.method}`
+        result: {
+          content: [
+            {
+              type: "text",
+              text: result
+            }
+          ]
         }
       };
+    } catch (error: any) {
+      return {
+        jsonrpc: "2.0",
+        id: request.id,
+        error: {
+          code: -32000,
+          message: error instanceof Error ? error.message : "Unknown error"
+        }
+      };
+    }
   }
+      
+  // Default case for unknown methods
+  return {
+    jsonrpc: "2.0",
+    id: request.id,
+    error: {
+      code: -32601,
+      message: `Method not found: ${request.method}`
+    }
+  };
 }
 
-// Health check endpoint
-app.get('/health', (_req, res) => {
-  res.json({ status: 'ok', service: 'cht.sh-mcp-server' });
+// Set up readline interface for STDIO
+const rl = readline.createInterface({
+  input: process.stdin,
+  output: process.stdout,
+  terminal: false
 });
 
-// Start the server on the first available port between 3000 and 3100
-function startServerOnAvailablePort(start: number, end: number) {
-  let currentPort = start;
-  function tryListen() {
-    server.listen(currentPort, () => {
-      console.log(`cht.sh MCP Server running on port ${currentPort}`);
-    });
-    server.on('error', (err: any) => {
-      if (err.code === 'EADDRINUSE') {
-        currentPort++;
-        if (currentPort > end) {
-          console.error(`No available ports between ${start} and ${end}`);
-          process.exit(1);
-        } else {
-          server.close();
-          server.removeAllListeners('error');
-          tryListen();
-        }
-      } else {
-        console.error('Server error:', err);
-        process.exit(1);
+// Log the start of the server (this goes to stderr which won't interfere with the protocol)
+console.error("cht.sh MCP Server starting...");
+
+// Handle incoming STDIO requests
+rl.on('line', async (line) => {
+  try {
+    console.error(`Received: ${line}`);
+    const request: MCPRequest = JSON.parse(line);
+    const response = await handleRequest(request);
+    const responseJson = JSON.stringify(response);
+    console.error(`Sending: ${responseJson}`);
+    process.stdout.write(responseJson + '\n');
+
+    // If this was an initialize request, handle the initialized notification from client
+    if (request.method === "initialize") {
+      console.error("Waiting for initialized notification...");
+    }
+  } catch (error: any) {
+    console.error("Error processing request:", error);
+    const errorResponse: MCPResponse = {
+      id: null,
+      jsonrpc: "2.0",
+      error: {
+        code: -32700,
+        message: "Parse error",
+        data: error instanceof Error ? error.message : "Unknown error"
       }
-    });
+    };
+    process.stdout.write(JSON.stringify(errorResponse) + '\n');
   }
-  tryListen();
-}
+});
 
-startServerOnAvailablePort(3000, 3100);
-
-// Handle process errors
+// Error handling
 process.on('uncaughtException', (error) => {
   console.error('Uncaught Exception:', error);
 });
